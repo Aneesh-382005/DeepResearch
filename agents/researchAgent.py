@@ -38,7 +38,8 @@ class TavilyResearchAgent:
             ]
 
             batchResults = await asyncio.gather(*batchTasks, return_exceptions=True)
-            batchResults.extend([r for r in batchResults if not isinstance(r, Exception)])
+            cleaned = [r for r in batchResults if not isinstance(r, Exception)]
+            searchResults.extend(cleaned)
 
         relevantURLs = []
         for result in searchResults:
@@ -50,8 +51,8 @@ class TavilyResearchAgent:
 
         extractedDocs = []
 
-        for url in range(0, len(relevantURLs), self.maxConcurrent):
-            batch = relevantURLs[url:url + self.maxConcurrent]
+        for i in range(0, len(relevantURLs), self.maxConcurrent):
+            batch = relevantURLs[i:i + self.maxConcurrent]
             batchTasks = [
                 self.client.extract(url = u) for u in batch]
             batchResults = await asyncio.gather(*batchTasks, return_exceptions=True)
