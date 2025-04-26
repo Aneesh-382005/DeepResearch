@@ -3,6 +3,7 @@ import os
 import importlib
 from typing import List, Dict, Any
 import asyncio
+import logging
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -14,8 +15,10 @@ except ModuleNotFoundError:
 
 
 from utilities.tavilyModule import CachedTavilyClient
+logger = logging.getLogger(__name__)
 
 class TavilyResearchAgent:
+    """Agent to perform concurrent Tavily searches and content extraction."""
     def __init__(self, APIkey: str, searchDepth: str = "advanced", maxResults: int = 10, scoreThreshold: float = 0.5, maxConcurrent: int = 5):
         self.client = CachedTavilyClient(APIkey)
         self.searchDepth = searchDepth
@@ -24,7 +27,7 @@ class TavilyResearchAgent:
         self.maxConcurrent = maxConcurrent
 
     async def runResearch(self, queries: List[str]) -> List[Dict[str, Any]]:
-        print(f"[Tavily] 🔍 Running {len(queries)} concurrent searches...")
+        logger.info("Running %d concurrent searches...", len(queries))
 
         searchResults = []
         for i in range(0, len(queries), self.maxConcurrent):
@@ -46,8 +49,8 @@ class TavilyResearchAgent:
             for item in result.get("results", []):
                 if item.get("score", 0) >= self.scoreThreshold:
                     relevantURLs.append(item.get("url"))
-
-        print(f"[Tavily] 🌐 Found {len(relevantURLs)} high-quality URLs. Extracting...")
+        
+        logger.info("Found %d high-quality URLs. Extracting...", len(relevantURLs))
 
         extractedDocs = []
 
