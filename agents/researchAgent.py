@@ -12,9 +12,9 @@ try:
 except ModuleNotFoundError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-
-
 from utilities.tavilyModule import CachedTavilyClient
+from storage.vectorstore import ChunkedIVFPQStore
+
 logger = logging.getLogger(__name__)
 
 class TavilyResearchAgent:
@@ -25,6 +25,7 @@ class TavilyResearchAgent:
         self.maxResults = maxResults
         self.scoreThreshold = scoreThreshold
         self.maxConcurrent = maxConcurrent
+        self.vectorStore = ChunkedIVFPQStore()
 
     async def runResearch(self, queries: List[str]) -> List[Dict[str, Any]]:
         logger.info("Running %d concurrent searches...", len(queries))
@@ -60,5 +61,11 @@ class TavilyResearchAgent:
                 self.client.extract(url = u) for u in batch]
             batchResults = await asyncio.gather(*batchTasks, return_exceptions=True)
             extractedDocs.extend([r for r in batchResults if not isinstance(r, Exception)])
-
+        
+        texts = [doc["content"] for doc in extractedDocs]
+        metadatas = [{"url": doc.get("url"), "chunk": None} for doc in extractedDocs]
+        self.vectorStore.addDocuments(texts, metadatas)
+        self.vectorStore.save()
+        logger.info("Vector store updated with %d documents.", len(texts))
+        
         return extractedDocs
