@@ -9,6 +9,7 @@ certifi==2025.1.31
 charset-normalizer==3.4.1
 colorama==0.4.6
 dataclasses-json==0.6.7
+distro==1.9.0
 dotenv==0.9.9
 exceptiongroup==1.2.2
 faiss-cpu==1.10.0
@@ -16,6 +17,7 @@ filelock==3.18.0
 frozenlist==1.6.0
 fsspec==2025.3.2
 greenlet==3.2.0
+groq==0.23.1
 h11==0.14.0
 httpcore==1.0.8
 httpx==0.28.1
@@ -23,12 +25,15 @@ httpx-sse==0.4.0
 huggingface-hub==0.30.2
 idna==3.10
 Jinja2==3.1.6
+jiter==0.9.0
 joblib==1.4.2
 jsonpatch==1.33
 jsonpointer==3.0.0
 langchain==0.3.24
 langchain-community==0.3.22
 langchain-core==0.3.55
+langchain-groq==0.3.2
+langchain-openai==0.3.14
 langchain-text-splitters==0.3.8
 langgraph==0.3.31
 langgraph-checkpoint==2.0.24
@@ -42,6 +47,7 @@ multidict==6.4.3
 mypy_extensions==1.1.0
 networkx==3.4.2
 numpy==2.2.5
+openai==1.76.0
 orjson==3.10.16
 ormsgpack==1.9.1
 packaging==24.2
