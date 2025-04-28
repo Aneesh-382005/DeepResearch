@@ -1,7 +1,7 @@
 from langchain_core.tools import tool
 from typing import List, Dict, Any
 import asyncio
-from agents.researchAgent import TavilyResearchAgent
+from researchAgent import TavilyResearchAgent
 import os
 from dotenv import load_dotenv
 load_dotenv()

@@ -62,10 +62,21 @@ class TavilyResearchAgent:
             batchResults = await asyncio.gather(*batchTasks, return_exceptions=True)
             extractedDocs.extend([r for r in batchResults if not isinstance(r, Exception)])
         
-        texts = [doc["content"] for doc in extractedDocs]
-        metadatas = [{"url": doc.get("url"), "chunk": None} for doc in extractedDocs]
+
+        texts = []
+        metadatas = []
+
+        for doc in extractedDocs:
+            for result in doc.get("results"):
+                texts.append(result["raw_content"])
+                metadatas.append({
+                    "url": doc.get("url"),
+                    "chunk":None,
+                })
+
         self.vectorStore.addDocuments(texts, metadatas)
         self.vectorStore.save()
+        
         logger.info("Vector store updated with %d documents.", len(texts))
         
         return extractedDocs
