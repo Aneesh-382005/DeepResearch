@@ -2,7 +2,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain_core.runnables import RunnablePassthrough
 from typing import Dict, Any, List, Union
-from langchain.schema import AIMessage
+from langchain_core.messages import AIMessage
 
 import re
 import json
@@ -96,8 +96,6 @@ async def SuperviseAndResearch(rawQuery: str) -> Union[str, List[Dict[str, Any]]
 
             print("QUERIES:", queries, type(queries))
             raw = await researchTool.ainvoke({"queries": queries})
-
-            print("RAW:", raw, type(raw))
 
             if isinstance(raw, AIMessage):
                 payload = raw.content
