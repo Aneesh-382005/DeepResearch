@@ -1,11 +1,12 @@
-from sentence_transformers import SentenceTransformer
-import faiss
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 from typing import List, Dict, Any
 import torch
-
-
+import json
+import faiss
+import numpy as np
 
 class ChunkedIVFPQStore:
     """
@@ -22,7 +23,11 @@ class ChunkedIVFPQStore:
                 chunkSize: int = 500,
                 chunkoverlap: int = 50,
                 indexPATH: str = "storage/ivfpq.faiss") -> None:
-        self.embedder = SentenceTransformer(modelName, device = "cuda" if torch.cuda.is_available() else "cpu")
+
+        self.embedder = HuggingFaceEmbeddings(
+            model_name=modelName,
+            model_kwargs={'device': "cuda" if torch.cuda.is_available() else "cpu"}
+        )
         self.dimension = dimension
         self.nlist = nlist
         self.M = M
@@ -31,25 +36,35 @@ class ChunkedIVFPQStore:
         self.chunkSize = chunkSize
         self.chunkoverlap = chunkoverlap
 
-        self.splitter = RecursiveCharacterTextSplitter(chunk_size = chunkSize , chunk_overlap = chunkoverlap)
+        self.splitter = RecursiveCharacterTextSplitter(chunk_size=chunkSize, chunk_overlap=chunkoverlap)
         self.metadata: List[Dict[str, Any]] = []
         self.indexPATH = indexPATH
+        self.metadataPATH = indexPATH + ".metadata"
 
-        # Initialize or load index
         if os.path.exists(self.indexPATH):
             try:
                 self.index = faiss.read_index(self.indexPATH)
                 print(f"Loaded existing index from {self.indexPATH}")
+                if os.path.exists(self.metadataPATH):
+                    with open(self.metadataPATH, 'r') as f:
+                        self.metadata = json.load(f)
+                    print(f"Loaded metadata with {len(self.metadata)} entries")
             except Exception as e:
-                print(f"Error loading existing index: {e}")
-                self._initialize_index()
+                print(f"Error loading existing index or metadata: {e}")
+                self._initializeIndex()
         else:
-            self._initialize_index()
+            self._initializeIndex()
 
-    def _initialize_index(self, nlist: int = None) -> None:
+    def _initializeIndex(self, nlist: int = None) -> None:
         """Initialize the FAISS index with the given number of clusters"""
         if nlist is None:
             nlist = self.nlist
+            
+
+        if nlist > 100:
+            print(f"Warning: Reducing initial nlist from {nlist} to 100 to avoid training issues")
+            nlist = 100
+            
         quantizer = faiss.IndexFlatL2(self.dimension)
         self.index = faiss.IndexIVFPQ(quantizer, self.dimension, nlist, self.M, self.nbits)
         self.index.nprobe = self.nprobe
@@ -68,22 +83,22 @@ class ChunkedIVFPQStore:
             print("No training data provided")
             return
 
-        embeddings = self.embedder.encode(sampleText).astype("float32")
-        n_points = embeddings.shape[0]
+
+        embeddings = np.array([self.embedder.embed_query(text) for text in sampleText]).astype("float32")
+        nPoints = embeddings.shape[0]
+
+        maxClusters = max(1, min(nPoints // 50, 100))
         
-        # FAISS requires at least 39 * k training points for good clustering
-        # We'll set k to be at most n_points / 39
-        max_clusters = max(1, n_points // 39)
-        if max_clusters < self.nlist:
-            print(f"Adjusting clusters from {self.nlist} to {max_clusters} based on available data")
-            self._initialize_index(max_clusters)
+        if maxClusters < self.nlist:
+            print(f"Adjusting clusters from {self.nlist} to {maxClusters} based on available data")
+            self._initializeIndex(maxClusters)
         
         try:
+            print(f"Training index with {nPoints} points and {maxClusters} clusters...")
             self.index.train(embeddings)
-            print(f"Successfully trained index with {n_points} points and {max_clusters} clusters")
+            print(f"Successfully trained index")
         except Exception as e:
             print(f"Error during training: {e}")
-            # If training fails, fall back to a simpler index
             print("Falling back to IndexFlatL2")
             self.index = faiss.IndexFlatL2(self.dimension)
 
@@ -100,36 +115,50 @@ class ChunkedIVFPQStore:
 
         for text, metadata in zip(texts, metadatas):
             chunks = self.chunkText(text)
-            allChunks.extend(chunks)
-            allMetadata.extend([metadata.copy() for _ in chunks])
+            for chunk in chunks:
+                chunkMetadata = metadata.copy()
+                chunkMetadata["chunk"] = chunk
+                allChunks.append(chunk)
+                allMetadata.append(chunkMetadata)
 
         if not allChunks:
             print("No chunks generated from documents")
             return
 
-        embeddings = self.embedder.encode(allChunks).astype("float32")
-        n_points = len(embeddings)
+
+        batchSize = 32
+        allEmbeddings = []
         
-        # FAISS requires at least 39 * k training points for good clustering
-        max_clusters = max(1, n_points // 39)
-        if max_clusters < self.nlist:
-            print(f"Adjusting clusters from {self.nlist} to {max_clusters} based on available data")
-            self._initialize_index(max_clusters)
+        print(f"Embedding {len(allChunks)} chunks in batches of {batchSize}...")
+        for i in range(0, len(allChunks), batchSize):
+            batch = allChunks[i:i+batchSize]
+            batchEmbeddings = [self.embedder.embed_query(chunk) for chunk in batch]
+            allEmbeddings.extend(batchEmbeddings)
+        
+        embeddings = np.array(allEmbeddings).astype("float32")
+        nPoints = len(embeddings)
+        
+
+        maxClusters = max(1, min(nPoints // 50, 100)) 
+        if maxClusters < self.nlist:
+            print(f"Adjusting clusters from {self.nlist} to {maxClusters} based on available data")
+            self._initializeIndex(maxClusters)
 
         if not self.index.is_trained:
             try:
+                print(f"Training index with {nPoints} points...")
                 self.index.train(embeddings)
-                print(f"Successfully trained index with {n_points} points and {max_clusters} clusters")
+                print(f"Successfully trained index")
             except Exception as e:
                 print(f"Error during training: {e}")
-                # If training fails, fall back to a simpler index
                 print("Falling back to IndexFlatL2")
                 self.index = faiss.IndexFlatL2(self.dimension)
 
         try:
             self.index.add(embeddings)
             self.metadata.extend(allMetadata)
-            print(f"Successfully added {n_points} vectors to index")
+            print(f"Successfully added {nPoints} vectors to index")
+            self.save()
         except Exception as e:
             print(f"Error adding vectors to index: {e}")
 
@@ -138,11 +167,19 @@ class ChunkedIVFPQStore:
         Search the index with a query string and return:
         (metadata, distance, chunk_text) for top_k hits.
         """
-        queryEmbedder = self.embedder.encode([query]).astype("float32")
-        distances, indices = self.index.search(queryEmbedder, topK)
+        queryEmbedding = np.array(self.embedder.embed_query(query)).astype("float32").reshape(1, -1)
+        
+
+        if isinstance(self.index, faiss.IndexFlatL2):
+            distances, indices = self.index.search(queryEmbedding, topK)
+        else:
+            self.index.nprobe = min(self.nprobe, self.index.nlist) 
+            distances, indices = self.index.search(queryEmbedding, topK)
         
         results = []
         for distance, index in zip(distances[0], indices[0]):
+            if index < 0 or index >= len(self.metadata):
+                continue
             metadata = self.metadata[index]
             chunk = metadata.get("chunk", "")
             results.append((metadata, float(distance), chunk))
@@ -151,7 +188,42 @@ class ChunkedIVFPQStore:
     
     def save(self) -> None:
         """
-        Persist the FAISS index to disk.
+        Persist the FAISS index and metadata to disk.
         """
-        faiss.write_index(self.index, self.indexPATH)
+        try:
+            os.makedirs(os.path.dirname(self.indexPATH), exist_ok=True)
+            faiss.write_index(self.index, self.indexPATH)
+            with open(self.metadataPATH, 'w') as f:
+                json.dump(self.metadata, f)
+            print(f"Saved index to {self.indexPATH} and metadata to {self.metadataPATH}")
+        except Exception as e:
+            print(f"Error saving index or metadata: {e}")
         
+    def toLangchainFaiss(self):
+        """
+        Convert to a LangChain FAISS vectorstore for compatibility with LangChain pipelines.
+        Note: This creates a new index and copies the vectors.
+        """
+        allChunks = [meta.get("chunk", "") for meta in self.metadata]
+        if not allChunks:
+            print("No chunks available to convert")
+            return None
+        
+        batchSize = 32
+        allEmbeddings = []
+        
+        for i in range(0, len(allChunks), batchSize):
+            batch = allChunks[i:i+batchSize]
+            batchEmbeddings = [self.embedder.embed_query(chunk) for chunk in batch]
+            allEmbeddings.extend(batchEmbeddings)
+
+        try:
+            langchainFaiss = FAISS.from_embeddings(
+                text_embeddings=list(zip(allChunks, allEmbeddings)),
+                embedding=self.embedder,
+                metadatas=self.metadata
+            )
+            return langchainFaiss
+        except Exception as e:
+            print(f"Error converting to LangChain FAISS: {e}")
+            return None
