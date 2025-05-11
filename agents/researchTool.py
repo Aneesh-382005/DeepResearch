@@ -18,9 +18,11 @@ async def researchTool(queries: List[str]) -> List[Dict[str, Any]]:
     """
     # Ensure queries are a list of strings
     if not isinstance(queries, list) or not all(isinstance(q, str) for q in queries):
-        raise ValueError("Input must be a list of strings.")
+        raise ValueError("Input 'queries' must be a list of strings.")
+    
+    if not queries:
+        return []
 
-    # Run the research agent
     results = await researchAgent.runResearch(queries)
     
     return results
