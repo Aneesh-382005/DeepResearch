@@ -1,2 +1,5 @@
 text.txt
 .env
+__pycache__/
+*.faiss
+langchain_faiss/
