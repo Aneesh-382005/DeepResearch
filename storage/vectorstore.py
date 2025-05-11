@@ -3,9 +3,13 @@ from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 from typing import List, Dict, Any, Optional, Tuple
+import logging
 import torch
 import json
 import numpy as np
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 class ChunkedVectorStore:
     """
@@ -102,20 +106,16 @@ class ChunkedVectorStore:
         (metadata, distance, chunk_text) for top_k hits.
         """
         if self.vectorStore is None:
-            print("No vectors in the index yet")
+            logger.warning("Search attempted but no FAISS index is loaded or created.")
             return []
 
-        results = self.vectorStore.similarity_search_with_score(query, k=topK)
+        resultsWithScores = self.vectorStore.similarity_search_with_score(query, k=topK)
         
         formattedResults = []
-        for doc, score in results:
-            metadata = doc.metadata
-            chunk = metadata.get("chunk", "")
-            # Convert score to distance (FAISS returns similarity, higher is better,
-            # but the original code returns distance, lower is better)
-            distance = 2.0 - score if score <= 2.0 else 0.0
-            formattedResults.append((metadata, distance, chunk))
-
+        for doc_object, score in resultsWithScores:
+            distance = score 
+            formattedResults.append((doc_object.metadata, distance, doc_object.page_content))
+            
         return formattedResults
     
     def save(self) -> None:
