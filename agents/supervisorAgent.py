@@ -14,6 +14,8 @@ import asyncio
 
 import os
 
+from researchTool import researchTool 
+
 moderatorAPIKey = os.getenv("moderatorKey")
 
 template = PromptTemplate(input_variables=["RawQuery"],
@@ -62,20 +64,20 @@ async def SuperviseAndResearch(rawQuery: str) -> Union[str, List[Dict[str, Any]]
     2. Calls the research tool with optimized queries if the query is valid
     
     Args:
-        raw_query: The user's original query
+        rawQuery: The user's original query string.
         
     Returns:
-        Either a string with a clarification question or research results
+        Either a string with a clarification question/refusal or research results (List of Dictionaries).
     """
     
-    response = await moderatorChain.ainvoke({"RawQuery": rawQuery})
 
-    if isinstance(response, AIMessage):
-        moderatorResponse = response.content.strip()
-    elif isinstance(response, dict):
-        moderatorResponse = list(response.values())[0].strip()
+    response_message = await moderatorChain.ainvoke(rawQuery)
+
+    if isinstance(response_message, AIMessage):
+        moderatorResponse = response_message.content.strip()
     else:
-        moderatorResponse = str(response).strip()
+        print(f"Unexpected response type from moderator chain: {type(response_message)}")
+        return "Error: Unexpected response format from moderator."
 
     if moderatorResponse.startswith("TOOL_CALL"):
         try:
@@ -86,31 +88,23 @@ async def SuperviseAndResearch(rawQuery: str) -> Union[str, List[Dict[str, Any]]
             argsJSON = argsMatch.group(0)
             args = json.loads(argsJSON)
 
-            queries = args.get("queries", [])
-            if not queries:
-                return "No valid search queries were generated. Please try again with a more specific question."
+            queries = args.get("queries")
+            if not queries or not isinstance(queries, list) or not all(isinstance(q, str) for q in queries):
+                return "Error: Invalid or missing queries from moderator response."
             
-
-
-            from researchTool import researchTool
-
-            print("QUERIES:", queries, type(queries))
-            raw = await researchTool.ainvoke({"queries": queries})
-
-            if isinstance(raw, AIMessage):
-                payload = raw.content
-            else:
-                payload = raw
-
-            if isinstance(payload, str):
-                docs = json.loads(payload)
-            else:
-                docs = payload
+            print(f"MODERATOR Rewritten Queries: {queries}")
+            docs = await researchTool.ainvoke({"queries": queries})
             
+            if not isinstance(docs, list): # Added a type check for robustness
+                print(f"Unexpected result type from researchTool: {type(docs)}")
+                return "Error: Research tool returned an unexpected data format."
+
             return docs 
         
+        except json.JSONDecodeError:
+            return "Error: Failed to decode JSON arguments for the research tool."
         except Exception as e:
-            return f"An error occurred while processing your query: {e}"
+            return f"An error occurred while processing your research request: {e}"
     
     else:
         return moderatorResponse
@@ -126,13 +120,17 @@ async def TestQueries():
     ]
     
     for query in testQueries:
+        print(f"\nOriginal Query: {query}")
         result = await SuperviseAndResearch(query)
-        print(f"\nOriginal: {query}")
-        print(f"Result type: {type(result)}")
+        print(f"Result Type: {type(result)}")
         if isinstance(result, str):
-            print(f"Clarification: {result}")
+            print(f"Moderator Response/Error: {result}")
+        elif isinstance(result, list):
+            print(f"Research Results: {len(result)} documents retrieved.")
+            #if result:
+                #print(f"First result example (first 50 chars of content if available): {str(result)}...")
         else:
-            print(f"Research results: {len(result)} documents retrieved")
+            print(f"Unexpected Result: {result}")
         print("-" * 80)
 
 if __name__ == "__main__":
