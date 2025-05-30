@@ -63,9 +63,9 @@ class ChunkedVectorStore:
                 )
                 print(f"[ChunkedVectorStore __init__] Successfully loaded existing index from folder '{self.indexPath}' with index name '{self.indexName}'.")
                 if self.vectorStore and self.vectorStore.index:
-                     print(f"[ChunkedVectorStore __init__] Loaded index has {self.vectorStore.index.ntotal} vectors.")
+                    print(f"[ChunkedVectorStore __init__] Loaded index has {self.vectorStore.index.ntotal} vectors.")
                 else:
-                     print(f"[ChunkedVectorStore __init__] Loaded index, but it appears empty or invalid.")
+                    print(f"[ChunkedVectorStore __init__] Loaded index, but it appears empty or invalid.")
 
             except Exception as e:
                 print(f"[ChunkedVectorStore __init__] Error during FAISS.load_local from folder '{self.indexPath}', index name '{self.indexName}': {e}")
@@ -150,7 +150,6 @@ class ChunkedVectorStore:
             
             self.vectorStore.save_local(
                 folder_path=self.indexPath,
-                embeddings=self.embedder,
                 index_name=self.indexName,
             )
             print(f"[ChunkedVectorStore save] Successfully saved index to folder '{self.indexPath}' as '{self.indexName}.faiss' and '{self.indexName}.pkl'.")
