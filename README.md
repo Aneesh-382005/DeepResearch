@@ -2,7 +2,7 @@
 
 DeepResearch Assistant is a prototype system designed to help users explore topics by automatically performing web research and synthesizing information. It takes a user's query, refines it for effective searching, gathers relevant content from the web, and then attempts to generate a concise answer based on the findings.
 
-## Features (Conceptual)
+## Features
 
 *   **Query Moderation & Optimization:** Initial user queries are assessed for clarity and safety, then rewritten for better search results.
 *   **Automated Web Research:** Utilizes web search (via Tavily API) to find relevant online sources.
